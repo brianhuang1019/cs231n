@@ -71,7 +71,7 @@ class KNearestNeighbor(object):
         # training point, and store the result in dists[i, j]. You should   #
         # not use a loop over dimension.                                    #
         #####################################################################
-        dists[i, j] = np.sum((X[i, :] - self.X_train[j, :]) ** 2)
+        dists[i, j] = np.sum((X[i, :] - self.X_train[j, :]) ** 2) ** 0.5
         #####################################################################
         #                       END OF YOUR CODE                            #
         #####################################################################
@@ -93,7 +93,7 @@ class KNearestNeighbor(object):
       # Compute the l2 distance between the ith test point and all training #
       # points, and store the result in dists[i, :].                        #
       #######################################################################
-      pass
+      dists[i, :] = np.sum((X[i, :] - self.X_train) ** 2, axis=1) ** 0.5
       #######################################################################
       #                         END OF YOUR CODE                            #
       #######################################################################
@@ -108,7 +108,7 @@ class KNearestNeighbor(object):
     """
     num_test = X.shape[0]
     num_train = self.X_train.shape[0]
-    dists = np.zeros((num_test, num_train)) 
+    dists = np.zeros((num_test, num_train))
     #########################################################################
     # TODO:                                                                 #
     # Compute the l2 distance between all test points and all training      #
@@ -121,7 +121,14 @@ class KNearestNeighbor(object):
     # HINT: Try to formulate the l2 distance using matrix multiplication    #
     #       and two broadcast sums.                                         #
     #########################################################################
-    pass
+    X2 = np.sum(X ** 2, axis = 1)
+    X2 = np.tile(X2, (num_train, 1)).T
+    X_train2 = np.sum(self.X_train ** 2, axis = 1)
+    dot = np.dot(X, self.X_train.T)
+
+    # print X2.shape, X_train2.shape, dot.shape
+
+    dists = (X2 - 2*dot + X_train2) ** 0.5  # L2 distance formula
     #########################################################################
     #                         END OF YOUR CODE                              #
     #########################################################################
