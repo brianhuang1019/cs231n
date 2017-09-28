@@ -372,7 +372,8 @@ def dropout_forward(x, dropout_param):
     # TODO: Implement the training phase forward pass for inverted dropout.   #
     # Store the dropout mask in the mask variable.                            #
     ###########################################################################
-    pass
+    mask = np.random.rand(*x.shape) >= p
+    out = x * mask / (1. - p)
     ###########################################################################
     #                            END OF YOUR CODE                             #
     ###########################################################################
@@ -380,7 +381,7 @@ def dropout_forward(x, dropout_param):
     ###########################################################################
     # TODO: Implement the test phase forward pass for inverted dropout.       #
     ###########################################################################
-    pass
+    out = x
     ###########################################################################
     #                            END OF YOUR CODE                             #
     ###########################################################################
@@ -400,6 +401,7 @@ def dropout_backward(dout, cache):
   - cache: (dropout_param, mask) from dropout_forward.
   """
   dropout_param, mask = cache
+  p = dropout_param['p']
   mode = dropout_param['mode']
   
   dx = None
@@ -407,12 +409,13 @@ def dropout_backward(dout, cache):
     ###########################################################################
     # TODO: Implement the training phase backward pass for inverted dropout.  #
     ###########################################################################
-    pass
+    dx = dout * mask / (1. - p)
     ###########################################################################
     #                            END OF YOUR CODE                             #
     ###########################################################################
   elif mode == 'test':
     dx = dout
+
   return dx
 
 
@@ -594,7 +597,7 @@ def spatial_batchnorm_backward(dout, cache):
   return dx, dgamma, dbeta
   
 
-def svm_loss(x, y):
+def svm_loss(x, y, eps=1e-3):
   """
   Computes the loss and gradient using for multiclass SVM classification.
 
@@ -612,16 +615,16 @@ def svm_loss(x, y):
   correct_class_scores = x[np.arange(N), y]
   margins = np.maximum(0, x - correct_class_scores[:, np.newaxis] + 1.0)
   margins[np.arange(N), y] = 0
-  loss = np.sum(margins) / N
+  loss = np.sum(margins) / float(N + eps)
   num_pos = np.sum(margins > 0, axis=1)
   dx = np.zeros_like(x)
   dx[margins > 0] = 1
   dx[np.arange(N), y] -= num_pos
-  dx /= N
+  dx /= float(N + eps)
   return loss, dx
 
 
-def softmax_loss(x, y):
+def softmax_loss(x, y, eps=1e-8):
   """
   Computes the loss and gradient for softmax classification.
 
@@ -637,9 +640,10 @@ def softmax_loss(x, y):
   """
   probs = np.exp(x - np.max(x, axis=1, keepdims=True))
   probs /= np.sum(probs, axis=1, keepdims=True)
+  probs += eps
   N = x.shape[0]
-  loss = -np.sum(np.log(probs[np.arange(N), y])) / N
+  loss = -np.sum(np.log(probs[np.arange(N), y])) / float(N + eps)
   dx = probs.copy()
   dx[np.arange(N), y] -= 1
-  dx /= N
+  dx /= float(N + eps)
   return loss, dx

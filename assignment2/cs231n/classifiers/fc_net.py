@@ -246,11 +246,15 @@ class FullyConnectedNet(object):
     ############################################################################
     out = {0: X}
     cache = {}
+    drop_cache = {}
 
     for i in range(1, self.num_layers):
       # feed forward for first n-1 layer
       out[i], cache[i] = affine_relu_forward(out[i-1], self.params['W%d' % i], self.params['b%d' % i])
 
+      # dropout
+      if self.use_dropout:
+        out[i], drop_cache[i] = dropout_forward(out[i], self.dropout_param)
 
     # feed forward last layer
     last = self.num_layers
@@ -295,6 +299,10 @@ class FullyConnectedNet(object):
 
     # back prop first(n-1) layer
     for i in reversed(range(1, self.num_layers)):
+      # dropout
+      if self.use_dropout:
+        dx[i+1] = dropout_backward(dx[i+1], drop_cache[i])
+      
       dx[i], dw[i], db[i] = affine_relu_backward(dx[i+1], cache[i])
 
     # plus reg grad
