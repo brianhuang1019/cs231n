@@ -208,8 +208,16 @@ class FullyConnectedNet(object):
     # pass of the second batch normalization layer, etc.
     self.bn_params = []
     if self.use_batchnorm:
-      self.bn_params = [{'mode': 'train'} for i in xrange(self.num_layers - 1)]
-    
+      self.bn_params = [{
+                          'mode': 'train',
+                          'running_mean': np.zeros(dims[i+1]),
+                          'running_var': np.zeros(dims[i+1])
+                        } for i in xrange(self.num_layers - 1)]
+      gammas = {'gamma%d' % (i+1): np.ones(dims[i+1]) for i in xrange(self.num_layers - 1)}
+      betas = {'beta%d' % (i+1): np.zeros(dims[i+1]) for i in xrange(self.num_layers - 1)}
+      self.params.update(gammas)
+      self.params.update(betas)
+
     # Cast all parameters to the correct datatype
     for k, v in self.params.iteritems():
       self.params[k] = v.astype(dtype)
@@ -250,7 +258,11 @@ class FullyConnectedNet(object):
 
     for i in range(1, self.num_layers):
       # feed forward for first n-1 layer
-      out[i], cache[i] = affine_relu_forward(out[i-1], self.params['W%d' % i], self.params['b%d' % i])
+
+      if self.use_batchnorm:
+        out[i], cache[i] = affine_bn_relu_forward(out[i-1], self.params['W%d' % i], self.params['b%d' % i], self.params['gamma%d' % i], self.params['beta%d' % i], self.bn_params[i-1])
+      else:
+        out[i], cache[i] = affine_relu_forward(out[i-1], self.params['W%d' % i], self.params['b%d' % i])
 
       # dropout
       if self.use_dropout:
@@ -292,6 +304,9 @@ class FullyConnectedNet(object):
     dx = {}
     dw = {}
     db = {}
+    dgamma = {}
+    dbeta = {}
+
     grads = {}
 
     # back prop last layer
@@ -303,13 +318,21 @@ class FullyConnectedNet(object):
       if self.use_dropout:
         dx[i+1] = dropout_backward(dx[i+1], drop_cache[i])
       
-      dx[i], dw[i], db[i] = affine_relu_backward(dx[i+1], cache[i])
+      if self.use_batchnorm:
+        dx[i], dw[i], db[i], dgamma[i], dbeta[i] = affine_bn_relu_backward(dx[i+1], cache[i])
+      else:
+        dx[i], dw[i], db[i] = affine_relu_backward(dx[i+1], cache[i])
 
     # plus reg grad
     for i in range(self.num_layers):
       dw[i+1] += self.reg * self.params['W%d' % (i+1)]
       grads['W%d' % (i+1)] = dw[i+1]
       grads['b%d' % (i+1)] = db[i+1]
+
+    if self.use_batchnorm:
+      for i in range(self.num_layers-1):
+        grads['gamma%d' % (i+1)] = dgamma[i+1]
+        grads['beta%d' % (i+1)] = dbeta[i+1]
     ############################################################################
     #                             END OF YOUR CODE                             #
     ############################################################################
