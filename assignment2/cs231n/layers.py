@@ -442,12 +442,36 @@ def conv_forward_naive(x, w, b, conv_param):
     W' = 1 + (W + 2 * pad - WW) / stride
   - cache: (x, w, b, conv_param)
   """
-  out = None
   #############################################################################
   # TODO: Implement the convolutional forward pass.                           #
   # Hint: you can use the function np.pad for padding.                        #
   #############################################################################
-  pass
+  (N, C, H, W) = x.shape
+  (F, C, HH, WW) = w.shape
+  (F, ) = b.shape
+  stride = conv_param['stride']
+  pad = conv_param['pad']
+  H_prime = 1 + (H + 2 * pad - HH) / stride
+  W_prime = 1 + (W + 2 * pad - WW) / stride
+
+  out = np.zeros((N, F, H_prime, W_prime))
+
+  npad = ((0,), (0,), (pad,), (pad,))
+  x_pad = np.pad(x, pad_width=npad, mode='constant', constant_values=0)
+
+  for i in range(H_prime):
+    for j in range(W_prime):
+      hs, he = i*stride, i*stride+HH
+      ws, we = j*stride, j*stride+WW
+      tensor = x_pad[:, :, hs:he, ws:we].flatten()  # shape=(N * C * HH * WW)
+      for k in range(F):
+        shape = np.concatenate([[N],np.ones(len(w[k].shape))])  # shape=(N, 1, 1, 1)
+        f = np.tile(w[k], shape).flatten()    # shape=(N * C * HH * WW)
+        dot = tensor*f                        # shape=(N * C * HH * WW)
+        Nsplit = np.split(dot, N)             # shape=(N, C * HH * WW)
+        Nsum = np.sum(Nsplit, axis=1) + b[k]  # shape=(N, )
+        out[:, k, i, j] = Nsum                # assign sum to out
+
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
@@ -471,8 +495,49 @@ def conv_backward_naive(dout, cache):
   dx, dw, db = None, None, None
   #############################################################################
   # TODO: Implement the convolutional backward pass.                          #
+  # borrow from https://github.com/cthorey/CS231/                             #
   #############################################################################
-  pass
+  (x, weight, b, conv_param) = cache
+  (N, C, H, W) = x.shape
+  (F, C, HH, WW) = weight.shape
+  (F, ) = b.shape
+  stride = conv_param['stride']
+  pad = conv_param['pad']
+  H_prime = 1 + (H + 2 * pad - HH) / stride
+  W_prime = 1 + (W + 2 * pad - WW) / stride
+
+  npad = ((0,), (0,), (pad,), (pad,))
+  x_pad = np.pad(x, pad_width=npad, mode='constant', constant_values=0)
+
+  # db: shape=(F,)
+  db = np.zeros(b.shape)
+  for f in range(F):
+    db[f] = np.sum(dout[:, f, :, :])
+
+  # dw: shape(F, C, HH, WW)
+  dw = np.zeros(weight.shape)
+  for f in range(F):
+    for c in range(C):
+      for h in range(HH):
+        for w in range(WW):
+          x_loc = x_pad[:, c, h:h + H_prime * stride:stride, w:w + W_prime * stride:stride]  # shape=(N, H_prime, W_prime)
+          dw[f, c, h, w] = np.sum(dout[:, f, :, :] * x_loc)
+
+  # dx: shape=(N, C, H, W)
+  dx = np.zeros(x.shape)
+  for n in range(N):
+    for f in range(F):
+      for h in range(H):
+        for w in range(W):
+          for hp in range(H_prime):
+            for wp in range(W_prime):
+              mask1 = np.zeros_like(weight[f, :, :, :])  # shape=(C, HH, WW)
+              mask2 = np.zeros_like(weight[f, :, :, :])  # shape=(C, HH, WW)
+              if (h + pad - hp * stride) < HH and (h + pad - hp * stride) >= 0:
+                mask1[:, h + pad - hp * stride, :] = 1.
+              if (w + pad - wp * stride) < WW and (w + pad - wp * stride) >= 0:
+                mask2[:, :, w + pad - wp * stride] = 1.
+              dx[n, :, h, w] += dout[n, f, hp, wp] * np.sum(weight[f, :, :, :] * mask1 * mask2, axis=(1, 2))
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
@@ -494,11 +559,27 @@ def max_pool_forward_naive(x, pool_param):
   - out: Output data
   - cache: (x, pool_param)
   """
-  out = None
   #############################################################################
   # TODO: Implement the max pooling forward pass                              #
   #############################################################################
-  pass
+  (N, C, H, W) = x.shape
+  pool_h = pool_param['pool_height']
+  pool_w = pool_param['pool_width']
+  pool_s = pool_param['stride']
+
+  H_prime = 1 + (H - pool_h) / pool_s
+  W_prime = 1 + (W - pool_w) / pool_s
+
+  out = np.zeros((N, C, H_prime, W_prime))
+  for i in range(H_prime):
+    for j in range(W_prime):
+      hs, he = i*pool_s, i*pool_s+pool_h
+      ws, we = j*pool_s, j*pool_s+pool_w
+      for n in range(N):
+        for c in range(C):
+          loc_max = np.max(x[n, c, hs:he, ws:we])
+          out[n, c, i, j] = loc_max
+
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
@@ -517,11 +598,30 @@ def max_pool_backward_naive(dout, cache):
   Returns:
   - dx: Gradient with respect to x
   """
-  dx = None
   #############################################################################
   # TODO: Implement the max pooling backward pass                             #
   #############################################################################
-  pass
+  (x, pool_param) = cache
+  (N, C, H, W) = x.shape
+  pool_h = pool_param['pool_height']
+  pool_w = pool_param['pool_width']
+  pool_s = pool_param['stride']
+
+  H_prime = 1 + (H - pool_h) / pool_s
+  W_prime = 1 + (W - pool_w) / pool_s
+
+  dx = np.zeros(x.shape)
+  for n in range(N):
+    for c in range(C):
+      for i in range(H_prime):
+        for j in range(W_prime):
+          hs, he = i*pool_s, i*pool_s+pool_h
+          ws, we = j*pool_s, j*pool_s+pool_w
+          local = x[n, c, hs:he, ws:we]
+          max_idx = np.unravel_index(local.argmax(), local.shape)
+          x_mask = np.zeros_like(local)
+          x_mask[max_idx] += 1.
+          dx[n, c, hs:he, ws:we] += dout[n, c, i, j] * x_mask
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
